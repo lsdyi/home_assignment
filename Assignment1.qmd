@@ -140,7 +140,7 @@ legend("topright",c("nu = 1","nu = 10"),col = c("red","blue"),lty=2,lwd=2)
 
 ```
 
-## Problem 2c)
+### Problem 2c)
 In this step, we plot the logarithm of the posterior distribution for $\nu$, using $$\log p(\nu \mid x_1,\dots,x_n) \;\propto\; \log p(x_1,\dots,x_n \mid \nu) + \log p(\nu),$$
 
 we evaluate the log-likelihood over a series of candidate values of $nu$ and add the log prior. Note that the prior is $\nu \sim \text{Exponential}(0.25)$ with the rate parameterization. The resulting curve (@fig-q2c) shows that the log-posterior peaks around $\nu \approx7$.
@@ -160,7 +160,7 @@ plot(nu_potential,log_post,type='l',xlab='nu values',ylab = 'log-posterior',lwd=
 
 ```
 
-## Problem 2d)
+### Problem 2d)
 In order to plot the posterior of distribution of $nu$, we firstly transform the log-posterior to unnormalized posterior as $$p(\nu \mid x_1,\dots,x_n) \;\propto\;  p(x_1,\dots,x_n \mid \nu) p(\nu)$$
 
 Then, we need to normalize the posterior as a true probability density function:

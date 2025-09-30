@@ -1,11 +1,10 @@
-
-### Load packages
 ```{r}
+#| echo: false
 library(mvtnorm)      # package with multivariate normal density
 library(latex2exp)    # latex maths in plots
 ```
-
-## Problem 3a)
+## Problem 3
+### Problem 3a)
 The Gamma prior is conjugate to possion model. We choose rate parameterization for gamma distribution. The posterior distribution is $p(\theta|x_1,...x_n) \sim Gamma(\alpha+n\bar{x}, \beta+n)$ where $\alpha=7$, $\beta=2$ from prior information.
 
 ```{r}
@@ -42,7 +41,7 @@ pgamma(8, alpha+sum(sample_x), beta+sample_x_size, lower.tail = FALSE)
 # curve(dgamma(x, alpha+sum(sample_x), beta+sample_x_size), from=0, to=9, ylab="gamma pdf")
 ```
 
-## Problem 3b)
+### Problem 3b)
 ```{r}
 # predictive simulation
 predDraws = rnbinom(n_draw, alpha+sum(sample_x), (beta+sample_x_size)/(beta+sample_x_size+1))
@@ -60,7 +59,7 @@ mean(temp)
 pnbinom(7, alpha+sum(sample_x), (beta+sample_x_size)/(beta+sample_x_size+1), lower.tail = FALSE)
 ```
 
-## Problem 3c)
+### Problem 3c)
 The utility function is a function of random varibable $X_{11}$. And $a_{11}$ is treated as a constant.
 \begin{equation} 
 U = \begin{cases}

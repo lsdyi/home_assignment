@@ -20,7 +20,7 @@ cat("The dataset contains", length(tempLinkoping$time), "observations.")
 
 ```
 
-### 4a) Determine a suitable prior distribution
+### Problem 4a) Determine a suitable prior distribution
 
 Given prior information:
 
@@ -127,7 +127,7 @@ for (i in 1:nrow(temp_vals)) {
 }
 ```
 
-### 4b) Simulating from the posterior
+### Problem 4b) Simulating from the posterior
 
 From the given information, a Gaussian linear regression with a conjugate prior will have a posterior with the same distribution family. The following is the joint posterior information.
 
@@ -243,7 +243,7 @@ lines(time_grid, f_median, col = "red", lwd = 2)
 ```
 From the posterior median of the regression curve, we can clearly confirm that the 95% confidence interval band does not contain all the observed data point, because the confidence interval band only reflect the uncertainty of the posterior median regression function without the noise term $\epsilon \sim N(0, \sigma^2)$. Therefore, it is not necessary for the confidence interval band of the regression function to include every data points.
 
-### 4c) Locating the day with the highest expected temperature
+### Problem 4c) Locating the day with the highest expected temperature
 
 Given the highest expected temperature at each time point $x_{max}$:
 
