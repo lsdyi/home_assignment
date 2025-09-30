@@ -1,5 +1,4 @@
 ---
-title: "BayesCourse_Assignment1"
 author: "Tianyi Zhang"
 ---
 
