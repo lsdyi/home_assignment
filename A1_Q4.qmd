@@ -1,0 +1,271 @@
+## Problem 4
+
+Given information:
+
+$$
+temp = \beta_0 + \beta_1*time + \beta_2*time^2 + \epsilon, \ \epsilon\sim N(0, \sigma^2)
+$$
+
+```{r, warning=FALSE}
+
+#install.packages("remotes")              # Uncomment this the first time
+library(remotes)
+#install_github("StatisticsSU/SUdatasets")  # Uncomment this the first time
+library(SUdatasets)
+library(mvtnorm)
+library(ggplot2)
+head(tempLinkoping)
+summary(tempLinkoping)
+cat("The dataset contains", length(tempLinkoping$time), "observations.")
+
+```
+
+### 4a) Determine a suitable prior distribution
+
+Given prior information:
+
+$$
+\boldsymbol{\beta} \vert \sigma^2 \sim N(\boldsymbol{\mu}_0,\sigma^2\boldsymbol{\Omega}_0^{-1}) 
+$$
+
+$$
+\sigma^2 \sim \mathrm{inv-}\chi^2(\nu_0, \sigma_0^2)
+$$
+The following figure shows the regression curves simulated from a beta prior with $\mu_0 (10, 100, -100)^T$. From @fig-reg-prior, most of the temperatures variate above 0 degree which is higher than my belief of Linkoping's temperatures.
+
+```{r fig-reg-prior, fig.cap="Simulated Regression Curves from Prior"}
+
+#beta prior ~ normal
+mu0 = c(10,100,-100)
+sigma_matrix0 = 0.01*diag(3)
+
+#sigma_sq prior ~ inv-x^2 
+nu0 = 3
+sigma0_sq = 1
+
+#store simulated betas, sigma^2 and temps
+m = 200
+time_grid =tempLinkoping$time
+temp_vals = matrix(NA, nrow=m, ncol=length(time_grid))
+
+# Simulator for the scaled inverse Chi-square distribution
+rScaledInvChi2 <- function(n, v_0, sigma2_0){
+  return((v_0*sigma2_0)/rchisq(n, df = v_0))
+}
+
+#simulated sigma_prior and beta_prior
+set.seed(42)
+
+sigma_sq_draws = rScaledInvChi2(m, v_0=nu0, sigma2_0 = sigma0_sq)
+
+for (i in 1:m){
+  sigma_sq_i = sigma_sq_draws[i]
+  betas_i = rmvnorm(1, mean=mu0, sigma=(sigma_sq_i*solve(sigma_matrix0)))
+  temp_vals[i, ] = betas_i[1] + betas_i[2]*time_grid + betas_i[3]*time_grid^2
+}
+
+plot(
+  NA, NA,
+  xlim = c(0, 1),
+  ylim = range(temp_vals),
+  xlab = "Normalized Time",
+  ylab = "Temperatures",
+  main = "Simulated Regression Curves from Prior"
+)
+
+# Now overlay all the curves
+for (i in 1:nrow(temp_vals)) {
+  lines(time_grid, temp_vals[i, ], col = rgb(0, 0, 0, alpha = 0.3))
+}
+
+
+```
+The original prior information is much higher than my belief. @fig-reg-prior-new is the regression curves plot with updated prior information $\mu_0 (5, 70, -70)^T$, it clearly shows that half of the simulated temperature curves variate below 0 degree which satisfies my beliefs of temperature variation in Linkoping. 
+
+```{r fig-reg-prior-new, fig.cap="Simulated Regression Curves from Updated Prior", warning=FALSE}
+#beta prior ~ normal updated
+mu0 = c(5,70,-70)
+Omega_matrix0 = 0.01*diag(3)
+
+#sigma_sq prior ~ inv-x^2 
+nu0 = 3
+sigma0_sq = 1
+
+#store simulated betas, sigma^2 and temps
+m = 200
+time_grid = seq(0, 1, length.out=366)
+temp_vals = matrix(NA, nrow=m, ncol=length(time_grid))
+
+# Simulator for the scaled inverse Chi-square distribution
+rScaledInvChi2 <- function(n, v_0, sigma2_0){
+  return((v_0*sigma2_0)/rchisq(n, df = v_0))
+}
+
+#simulated sigma_prior and beta_prior
+set.seed(42)
+
+sigma_sq_draws = rScaledInvChi2(m, v_0=nu0, sigma2_0 = sigma0_sq)
+
+for (i in 1:m){
+  sigma_sq_i = sigma_sq_draws[i]
+  betas_i = rmvnorm(1, mean=mu0, sigma=(sigma_sq_i*solve(Omega_matrix0)))
+  temp_vals[i, ] = betas_i[1] + betas_i[2]*time_grid + betas_i[3]*time_grid^2
+}
+
+plot(
+  NA, NA,
+  xlim = c(0, 1),
+  ylim = range(temp_vals),
+  xlab = "Normalized Time",
+  ylab = "Temperatures",
+  main = "Simulated Regression Curves from Updated Prior"
+)
+
+# Now overlay all the curves
+for (i in 1:nrow(temp_vals)) {
+  lines(time_grid, temp_vals[i, ], col = rgb(0, 0, 0, alpha = 0.3))
+}
+```
+
+### 4b) Simulating from the posterior
+
+From the given information, a Gaussian linear regression with a conjugate prior will have a posterior with the same distribution family. The following is the joint posterior information.
+
+$$
+\beta \mid\sigma^2,y \sim N(\mu_n, \sigma^2 \Omega_n^{-1})
+$$
+$$
+\sigma^2\mid y \sim Inv-\chi^2(\nu_n, \sigma^2_n)
+$$
+$$
+\Omega_n = X^TX + \Omega_0
+$$
+
+$$
+\mu_n = \Omega_n^{-1} (X^Ty + \Omega_0\mu_0)
+$$
+$$
+\nu_v = \nu_0 +n
+$$
+
+$$
+\sigma^2_n = (\nu_0\sigma^2_0 + y^Ty + \mu_0^T\Omega_0\mu_0 - \mu_n^T\Omega_n\mu_n) / \nu_n
+$$
+The parameters information from prior and likelihood/model are given, we can compute the posterior parameters using the following code.
+
+``` {r, warning=FALSE}
+#settings before simulation
+time = tempLinkoping$time
+X = cbind(1, time, time^2)
+y = tempLinkoping$temp
+n = length(y)
+
+#beta prior ~ normal updated
+mu0 = c(5,70,-70)
+Omega0 = 0.01*diag(3)
+
+#sigma_sq prior ~ Inv-x^2 
+nu0 = 3
+sigma0_sq = 1
+
+#posterior settings
+Omega_n = t(X) %*% X + Omega0
+mu_n = solve(Omega_n) %*% (t(X) %*% y + Omega0 %*% mu0)
+nu_n = nu0 + n
+sigma_n_sq = (nu0*sigma0_sq + t(y)%*%y + t(mu0)%*%Omega0%*%mu0 - t(mu_n)%*%Omega_n%*%mu_n) / nu_n
+
+```
+
+After computing the posterior parameters, we can simulate samples from the posterior of $\sigma^2$. Then, the simulated samples of $\sigma^2$ can be plugged into $\beta\mid\sigma^2$ 's posterior distribution, which is multivariate normal. Finally, we can draw samples from $\beta$ 's posterior distribution and visualize the marginal posteriors of each parameter using histograms as shown in @fig-para-hist.
+
+``` {r fig-para-hist, fig.cap="Marginal Distribution of Parameters", warning=FALSE}
+m = 10000
+sigma_sq_post_draws = rScaledInvChi2(m, nu_n, sigma_n_sq)
+#store betas draws
+beta_post_draws = matrix(NA, nrow=m, ncol=ncol(X))
+
+for (i in 1:m){
+  sigma_sq_post_i = sigma_sq_post_draws[i]
+  beta_post_var = sigma_sq_post_i * solve(Omega_n)
+  
+  beta_post_draws[i, ] = rmvnorm(1, mean=as.vector(mu_n), sigma=beta_post_var)
+}
+
+par(mfrow = c(2, 2))
+beta_names = expression(beta[0], beta[1], beta[2])
+beta_mains =c("Intercept", "Time", "Time^2")
+
+for (i in 1:length(beta_names)){
+  hist(beta_post_draws[, i], main=beta_mains[i], xlab=beta_names[i],
+       col="skyblue",
+       freq=FALSE)
+}
+
+hist(sigma_sq_post_draws, main="Variance", xlab=expression(sigma^2), col="skyblue", freq=FALSE)
+
+
+```
+Since the marginal posterior distributions of coefficients $\beta = (\beta_0, \beta_1, \beta_3)$ are known, the posterior distribution of the regression function can be computed by plugging the simulated $\beta$ posterior draws into the regression model: 
+$$
+f(time) = \beta_0 + \beta_1 * time + \beta_2 * time^2
+$$
+After the posterior distribution of the regression function is known, we can simply compute the posterior median and the equal-tail 95% confidence interval for the regression at each time point. @fig-reg-post-median contains the data point from Linkoping dataset and a posterior median curve of the regression function with equal-tail 95% confidence interval.
+
+```{r fig-reg-post-median, fig.cap="Posterior Median of Regression Curve with 95% C.I",warning=FALSE}
+# Predictive curves
+time_grid = tempLinkoping$time
+X_grid = cbind(1, time, time^2)
+# X_grid: 366x3, beta_post_draws: 10000x3, transpose to 3x10000
+f_post = X_grid %*% t(beta_post_draws)
+
+f_median = apply(f_post, 1, median)
+f_lower <- apply(f_post, 1, quantile, probs = 0.025)
+f_upper <- apply(f_post, 1, quantile, probs = 0.975)
+
+# Base R plot version of predictive regression curve
+
+# Set up base plot
+plot(time_grid, f_median, type = "l", lwd = 2, col = "red",
+     ylim = range(c(f_lower, f_upper, y)),
+     xlab = "Normalized Time", ylab = "Temperature",
+     main = "Posterior Median of Regression Curve with 95% C.I")
+
+# Add credible interval (ribbon)
+polygon(c(time_grid, rev(time_grid)),
+        c(f_lower, rev(f_upper)),
+        col = rgb(70/255, 130/255, 180/255, 0.4), border = NA)
+
+# Add observed data points
+points(time, y, pch = 20, col = "gray40")
+
+# Optionally add median line again (drawn over ribbon)
+lines(time_grid, f_median, col = "red", lwd = 2)
+```
+From the posterior median of the regression curve, we can clearly confirm that the 95% confidence interval band does not contain all the observed data point, because the confidence interval band only reflect the uncertainty of the posterior median regression function without the noise term $\epsilon \sim N(0, \sigma^2)$. Therefore, it is not necessary for the confidence interval band of the regression function to include every data points.
+
+### 4c) Locating the day with the highest expected temperature
+
+Given the highest expected temperature at each time point $x_{max}$:
+
+$$
+x_{max} = -\frac{\beta_1}{2\beta_2}
+$$
+Since the posterior distribution of $\beta$ is known from previous problem, we can use the samples from the distribution to compute the values of $x_{max}$ at each time point, and the values can be visualized through a histogram as shown in @fig-xmax-hist.
+
+```{r fig-xmax-hist, fig.cap="Posterior of x_max",warning=FALSE}
+beta1_post_samples = beta_post_draws[, 2]
+beta2_post_samples = beta_post_draws[, 3]
+
+x_max = -beta1_post_samples / (2*beta2_post_samples)
+
+par(mfrow=c(1, 2))
+
+hist(x_max, breaks=50, freq = FALSE, col="lightblue",
+     main="Posterior of x_max",
+     xlab="Time With Highest Expected Temperature")
+
+#unnormalized time to regular day
+hist(x_max*366, breaks=50, freq = FALSE, col="steelblue",
+     main="Posterior of x_max",
+     xlab="Day With Highest Expected Temperature")
+```

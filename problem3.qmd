@@ -1,0 +1,95 @@
+
+### Load packages
+```{r}
+library(mvtnorm)      # package with multivariate normal density
+library(latex2exp)    # latex maths in plots
+```
+
+## Problem 3a)
+The Gamma prior is conjugate to possion model. We choose rate parameterization for gamma distribution. The posterior distribution is $p(\theta|x_1,...x_n) \sim Gamma(\alpha+n\bar{x}, \beta+n)$ where $\alpha=7$, $\beta=2$ from prior information.
+
+```{r}
+## likelihood sample
+sample_x = c(3, 5, 4, 3, 6, 8, 6, 1, 14, 3)
+sample_x_size = length(sample_x)
+sample_x_mean = mean(sample_x)
+
+```
+
+```{r}
+## parameters for prior
+alpha = 7
+beta = 2
+
+# posterior simulation
+n_draw = 10000
+theta_sample = rgamma(n_draw, alpha+sum(sample_x), beta+sample_x_size)
+
+hist(theta_sample, breaks = 50, probability = TRUE,
+     col = "lightgray", border = "white",
+     main = "Gamma Posterior Simulation",
+     xlab = expression(theta))
+
+## get all draw over 8
+theta_sample_over_8 = theta_sample > 8
+## calculate prob of theta>8 by using event_size/sample_size
+sum(theta_sample_over_8)/n_draw
+
+# use gamma cdf to get prob of over 8
+pgamma(8, alpha+sum(sample_x), beta+sample_x_size, lower.tail = FALSE)
+
+# check gamma pdf
+# curve(dgamma(x, alpha+sum(sample_x), beta+sample_x_size), from=0, to=9, ylab="gamma pdf")
+```
+
+## Problem 3b)
+```{r}
+# predictive simulation
+predDraws = rnbinom(n_draw, alpha+sum(sample_x), (beta+sample_x_size)/(beta+sample_x_size+1))
+hist(predDraws,
+     xlab = "Max weight on a future day", ylab = "Predictive density", 
+     main = "Predictive density max weight - single day", col = "lightgray", border = "white")
+
+## get all draw over 8
+temp = predDraws >= 8
+## calculate prob of theta>=8 by using event_size/sample_size
+mean(temp)
+
+# use gamma cdf to get prob of over 8
+# negbinomial is discrete, cdf <= x, so using > 7
+pnbinom(7, alpha+sum(sample_x), (beta+sample_x_size)/(beta+sample_x_size+1), lower.tail = FALSE)
+```
+
+## Problem 3c)
+The utility function is a function of random varibable $X_{11}$. And $a_{11}$ is treated as a constant.
+\begin{equation} 
+U = \begin{cases}
+10a_{11} & \text{if} X_{11} \geq a_{11}, \\
+10X_{11} - 7(a_{11}-X_{11}) & \text{if} X_{11} < a_{11}
+\end{cases}
+\end{equation}
+
+With simplification, it should be
+\begin{equation} 
+U = \begin{cases}
+10a_{11} & \text{if } X_{11} \geq a_{11}\\
+17X_{11} - 7a_{11} & \text{if } X_{11} < a_{11}
+\end{cases}
+\end{equation}
+The expected value of utility function is $E(U)=10a_{11}*Pr(X_{11} \geq a_{11}|a_{11},x_{1}...,x_{10}) +E(17X_{11}-7a_{11}|X_{11}<a_{11})*Pr(X_{11} < a_{11}|a_{11},x_{1}...,x_{10})$
+It is required to find the maximal value of expected utility. The uncertainty comes from demand $X_{11}$ and storage $a_{11}$. The predictive distribution of $X_{11}$ is from simulation. And only using $a_{11}$ as varibale and get the maximizer in expected utility.
+```{r}
+aGrid = seq(0, 15, length = 1000)
+EL = rep(length(aGrid))
+for (i in 1:length(aGrid)){
+  a = aGrid[i]
+  p = mean(predDraws >= a)
+  
+  EL[i] = 10*a*p +(17*mean(predDraws[predDraws<a])-7*a)*(1-p)
+}
+plot(aGrid, EL, xlab = "storage, a", ylab = "Expected Utility", type = "l", 
+     lwd = 3, col = "lightgray")
+abline(v = aGrid[which.max(EL)], lty = "dotted")
+maximizer = aGrid[which.max(EL)]
+maximizer
+```

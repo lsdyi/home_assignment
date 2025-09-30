@@ -1,0 +1,29 @@
+---
+title: "Home assignment - Part A"
+subtitle: "GroupA-3"
+author:   
+  - Junqi Hu
+  - Tianyi Zhang   
+  - Jinzhe Yang
+date: last-modified
+format: 
+  html: default
+  pdf: default
+toc: true
+language: 
+  title-block-author-single: " "
+toc-title-document: "Content"
+crossref-fig-title: "Figure"
+theme: lumen
+title-block-banner-color: Primary
+callout-warning-caption: "Warning"
+callout-note-caption: "Note!"
+callout-tip-caption: "Tip"
+editor: visual
+---
+
+{{< include Assignment1.qmd >}}
+
+{{< include problem3.qmd >}}
+
+{{< include A1_Q4.qmd >}}

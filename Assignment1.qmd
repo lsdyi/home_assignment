@@ -1,0 +1,197 @@
+---
+title: "BayesCourse_Assignment1"
+author: "Tianyi Zhang"
+---
+
+## Problem 1
+
+### Problem 1a
+
+In this task, we assume a $Beta(\alpha_0,\beta_0)$ prior for $\theta$ which comes from $y_1,...,y_n|\theta\sim Bern(\theta)$. We use Monte Carlo methods to estimate the posterior and standard deviation.
+```{r}
+set.seed(42)
+n = 20
+s = 14
+f = n-s
+alpha0 = 2
+beta0 = 2
+
+# Use posterior formula 
+alpha_post = alpha0+s
+beta_post = beta0+f
+
+# Set true value as benchmark
+mean_true = alpha_post/(alpha_post+beta_post)
+var_true = (alpha_post*beta_post)/(((alpha_post+beta_post)**2) * (alpha_post+beta_post+1))
+sd_true = sqrt(var_true)
+
+size = 10000
+rtheta = rbeta(size,alpha_post,beta_post)
+```
+The code block above defined the parameters from Bernoulli model and beta prior. Due to beta prior is a conjugate prior, we can calculate the mean and variance by formula: $$\mathbb{E}(\theta)=\frac{\alpha}{\alpha+\beta}$$
+$$\mathbb{V}(\theta)=\frac{\alpha \beta}{(\alpha+\beta)^2(\alpha+\beta+1)}$$
+We use `rbeta()` to simulate a group of data from true posterior. According to @fig-q1_mc_mean, as the number of sample size increases, the estimation of postrior mean converges to the true posterior mean, approximately $\mathbb{E}(X)=0.6667$. @fig-q1_mc_sd also displayed the same tendency, where the standard deviation is very close to $\sigma = 0.0943$
+```{r}
+#| label: fig-q1_mc_mean
+#| fig-cap: "Convergence of True Posterior Mean by Monte-Carlo method"
+set.seed(42)
+running_mean = 0
+for (i in 1:size){
+  running_mean[i] = mean(rtheta[1:i])
+}
+
+plot(running_mean, type='l',col="blue",lwd=2,xlab = "Numbers of Sample Size", ylab="Estunate of Posterior Mean")
+abline(h=mean_true,col="red",lwd=2,lty=2)
+legend("topright",legend=c("Monte-Carlo Estimate","True Posterior Mean"),col=c("blue","red"),pch=15,bty="n")
+```
+
+
+```{r}
+#| label: fig-q1_mc_sd
+#| fig-cap: Convergence of True Posterior Standard Deviation by Monte-Carlo method
+
+running_sd = 0
+for (i in 1:size){
+  running_sd[i] = sd(rtheta[1:i])
+}
+
+plot(running_sd, type='l',col="blue",lwd=2,xlab = "Numbers of Sample Size", ylab="Estunate of Posterior Standard Deviation")
+abline(h=sd_true,col="red",lwd=2,lty=2)
+legend("topright",legend=c("Monte-Carlo Estimate","True Posterior Standard Deviation"),col=c("blue","red"),pch=15,bty="n")
+
+```
+
+### Problem 1b)
+In this task, we calculate the posterior probability $Pr(\theta<0.5|\textbf{y})$ by simulation, and compare the exact value by `pbeta()`. The result shows that the simulated answer is 0.0478, and the exact value is 0.0466, simulated value is pretty close to exact one.
+```{R}
+nDraws = 10000
+set.seed(42)
+
+
+prob_sim = mean(rbeta(nDraws,alpha_post,beta_post)<=0.5)
+prob_true = pbeta(0.5,alpha_post,beta_post)
+
+# prob_sim = 0.0478
+# prob_true ≈ 0.04656
+```
+
+### Problem 1c)
+In this task, we simulate the posterior distribution of the log-odds $\phi = log(\frac{\theta}{1-\theta})$. the method `qlogis()` can compute the data with log-odds transformation, which is equivalent to `transformed = log(theta/(1-theta))`.
+```{R}
+#| label: fig-q1_hist
+#| fig-cap: "Histogram of log-odds theta"
+
+set.seed(42)
+theta_original = rbeta(size,alpha_post,beta_post)
+theta_trans = qlogis(theta_original)
+
+hist(theta_trans,xlab="log-odds theta",main="",ylab="Density")
+
+```
+
+
+
+## Problem 2
+In this task, we explore dataset `ericsson` on daily percentage returns on Ericsson stock. @fig-q2-standardized shows the distribution of standardized daily returns. Most values are centered around zero, but the distribution exhibits heavy tails, with occasional extreme negative returns.
+
+```{R}
+#| label: fig-q2-standardized
+#| fig-cap: "Histogram of standardized daily returns"
+load("ericsson.RData")
+x = (returns - mean(returns))/sd(returns)
+hist(x, 30, freq = FALSE, xlab = "daily returns (standardized)", ylab = "density",main = "")
+```
+### Problem 2a)
+
+We computed the log-likelihood function over a series of candidate degrees of freedom $\nu$ and plotted the curve. In @fig-q2a, we can notice that the log-likelihood curve reaches its maximum value around 7, which implies that the maximum likelihood estimate of the degree of freedon is $\hat{\nu} \approx 7$.
+
+```{R}
+#| label: fig-q2a
+#| fig-cap: "Curve of log-likelihood in potential degrees of freedom nu"
+nu_potential = seq(0.5,60,by=0.1)
+loglike = numeric(length(nu_potential))
+
+for (i in seq_along(nu_potential)){
+  loglike[i] = sum(dt(x,df=nu_potential[i],log=TRUE))
+}
+
+plot(nu_potential,loglike,type='l',xlab="potential nu values",ylab="log-likelihood",lwd=2)
+
+nu_mle = nu_potential[which.max(loglike)]
+# nu_mle = 7
+abline(v=nu_mle,col="red",lty=2,lwd=2)
+
+```
+
+### Problem 2b)
+We plot the likelihood $L(x_1,...,x_n|\nu)=\prod_ip(x_i|\nu)$ and plotted the curve. in @fig-q2b, the red line and blue line represent $\nu = 1$ and $\nu = 10$ respectively. The likelihood peaks around $\nu \approx 7$. Clearly, $L(1)$ (also called Cauchy Distribution) is obviously smaller than $L(10)$, showing that the data are heavy-tailed, but not as extreme as a Cauchy distribution.
+```{R}
+#| label: fig-q2b
+#| fig-cap: "Curve of likelihood with respect to potential degrees of freedom nu"
+nu_potential = seq(0.5,60,by=0.1)
+likelihood = numeric(length(nu_potential))
+for (i in seq_along(likelihood)){
+  likelihood[i] = prod(dt(x,df=nu_potential[i],log=FALSE))
+}
+plot(nu_potential,likelihood,type='l',xlab="Potential nu values",ylab="Likelihood",lwd=2)
+abline(v=1,col="red",lty=2,lwd=2)
+abline(v=10,col="blue",lty=2,lwd=2)
+legend("topright",c("nu = 1","nu = 10"),col = c("red","blue"),lty=2,lwd=2)
+
+```
+
+## Problem 2c)
+In this step, we plot the logarithm of the posterior distribution for $\nu$, using $$\log p(\nu \mid x_1,\dots,x_n) \;\propto\; \log p(x_1,\dots,x_n \mid \nu) + \log p(\nu),$$
+
+we evaluate the log-likelihood over a series of candidate values of $nu$ and add the log prior. Note that the prior is $\nu \sim \text{Exponential}(0.25)$ with the rate parameterization. The resulting curve (@fig-q2c) shows that the log-posterior peaks around $\nu \approx7$.
+
+```{R}
+#| label: fig-q2c
+#| fig-cap: "Curve of logarithm of the posterior distribution for nu"
+nu_potential = seq(0.5,60,by=0.1)
+log_post= numeric(length(nu_potential))
+for (i in seq_along(nu_potential)){
+  nu = nu_potential[i]
+  logprior = dexp(nu,rate=0.25,log=TRUE)
+  loglike = sum(dt(x,df=nu,log=TRUE))
+  log_post[i] = loglike +logprior
+}
+plot(nu_potential,log_post,type='l',xlab='nu values',ylab = 'log-posterior',lwd=2)
+
+```
+
+## Problem 2d)
+In order to plot the posterior of distribution of $nu$, we firstly transform the log-posterior to unnormalized posterior as $$p(\nu \mid x_1,\dots,x_n) \;\propto\;  p(x_1,\dots,x_n \mid \nu) p(\nu)$$
+
+Then, we need to normalize the posterior as a true probability density function:
+$$p(\nu|x_1,...,x_n)=\frac{p(x_1,...,x_n|\nu)p(\nu)}{\int_0^{\infty}p(x_1,...,x_n|\nu)p(\nu)d\nu}$$
+we can use Riemann approximation to calculate the integral:
+$$p(\nu|x_1,...,x_n)\approx \frac{p(x_1,...,x_n|\nu_i)p(\nu_i)}{\sum_j p(x_1,...,x_n|\nu_j)p(\nu_j)\Delta\nu}$$
+where $\Delta\nu$ means the length of each step.
+
+@fig-q2d The blue line and orange line represents the posterior and prior respectively.
+
+```{R}
+#| label: fig-q2d
+#| fig-cap: "Posterior and Prior Distributions of the Degrees of Freedom nu"
+unnormalized_posterior = exp(log_post)
+distance = 0.1
+posterior = unnormalized_posterior/(sum(unnormalized_posterior)*distance)
+plot(nu_potential,posterior, type="l",col = 'blue',xlab="nu",ylab="density",lwd=2)
+lines(nu_potential,dexp(nu_potential,rate=0.25),col="orange",lwd=2)
+legend("topright",c("posterior","prior"),col=c("blue","orange"),lty=1,lwd=4)
+
+```
+
+### Problem 2e)
+The defination of Posterior mean is
+$$\mathbb{E}（\nu|x_1,...,x_n）=\int_0^{\infty}\nu p(\nu | x_1,...,x_n)d\nu$$
+where $p(\nu|x_1,...,x_n)$ is normalized posterior distribution. We use Riemann sum, same as Problem 2d, to approximate the integral:
+$$\mathbb{E}(\nu|x_1,...,x_n)\approx \sum_{i=1}^m\nu_i p(\nu_i|x_1,...,x_n)\Delta\nu$$
+and the posterior mean of $\nu = 7.0807$
+
+```{R}
+post_mean = sum(nu_potential*posterior) * 0.1
+```
+
+
