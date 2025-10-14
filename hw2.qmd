@@ -1,0 +1,377 @@
+---
+title: "Home assignment - Part B"
+author:   
+  - Jinzhe Yang
+date: last-modified
+format: 
+  html: default
+  pdf:
+    keep-tex: true
+    include-in-header: 
+       text: |
+         \usepackage{fvextra}
+         \DefineVerbatimEnvironment{Highlighting}{Verbatim}{breaklines,commandchars=\\\{\}}
+         \DefineVerbatimEnvironment{OutputCode}{Verbatim}{breaklines,commandchars=\\\{\}}
+toc: true
+language: 
+  title-block-author-single: " "
+toc-title-document: "Content"
+crossref-fig-title: "Figure"
+theme: lumen
+title-block-banner-color: Primary
+callout-warning-caption: "Warning"
+callout-note-caption: "Note!"
+callout-tip-caption: "Tip"
+editor: visual
+---
+
+```{r}
+library(mvtnorm)
+library(rstan)
+library(loo)
+options(mc.cores = parallel::detectCores())
+rstan_options(auto_write = TRUE)
+```
+
+```{r}
+data <- read.csv("https://github.com/mattiasvillani/BayesLearnCourse/raw/master/assignment/bugs.csv",
+    header = TRUE
+)
+y <- data$nBugs # response variable: the number of bugs, a vector with n = 91 observations
+X <- data[, -1] # 91 x 5 matrix with covariates
+X <- as.matrix(X) # X was initially a data frame, but we want it to be matrix
+head(X)
+```
+
+```{r}
+# theta: variable of function
+# x: sample
+# mu_0: prior hyperparameter
+# sigma_0: prior hyperparameter
+LogPostPoissonReg <- function(theta, X, y, mu_0, sigma_0) {
+    lambda <- exp(X %*% theta) # for every observation, they have a lambda
+    logLik <- sum(dpois(y, lambda = lambda, log = TRUE))
+    logPrior <- dmvnorm(theta, mean = mu_0, sigma = sigma_0, log = TRUE)
+    logPost <- logLik + logPrior
+    return(logPost)
+}
+```
+
+```{r}
+# test logposterior
+covariate_length <- length(X[1, ])
+theta <- rep(1, covariate_length)
+mu_0 <- rep(0, covariate_length)
+tau <- 10
+sigma_0 <- tau * diag(covariate_length)
+LogPostPoissonReg(theta, X, y, mu_0 = mu_0, sigma_0 = sigma_0)
+```
+
+```{r}
+# maximze the posterior
+initial_theta <- theta
+optimResult <- optim(par = initial_theta, fn = LogPostPoissonReg, gr = NULL, X = X, y = y, mu_0 = mu_0, sigma_0 = sigma_0, method = c("BFGS"), control = list(fnscale = -1), hessian = TRUE)
+
+postMode <- optimResult$par
+postCov <- -solve(optimResult$hessian)
+
+postMode
+postCov
+postStd <- sqrt(diag(postCov))
+```
+
+The posterior distribution approximately follows mutivariate normal distribution, with mean equal to $\tilde{\theta}$ and covariance equal to observed information $J_x^{-1}$.
+
+$\tilde{\theta}$ is the `postCov` in codes and $J_x^{-1}$ is the `postCov` in codes.
+
+```{r}
+# simulation from normal approximation
+nSim <- 10000
+thetaDraws <- rmvnorm(nSim, postMode, postCov)
+
+plotMarginal <- function(draws) {
+    beta_1 <- draws[, 1]
+    beta_2 <- draws[, 2]
+    beta_3 <- draws[, 3]
+    beta_4 <- draws[, 4]
+    beta_5 <- draws[, 5]
+
+    par(mfrow = c(3, 2), mar=c(2,2,2,2))
+    hist(beta_1,
+        freq = FALSE, col = "lightgray"
+    )
+    hist(beta_2,
+        freq = FALSE, col = "lightgray"
+    )
+    hist(beta_3,
+        freq = FALSE, col = "lightgray"
+    )
+    hist(beta_4,
+        freq = FALSE, col = "lightgray"
+    )
+    hist(beta_5,
+        freq = FALSE, col = "lightgray"
+    )
+}
+
+plotMarginal(thetaDraws)
+
+## @todo: get interval from distribution
+qmvnorm(0.95, mean = postMode, sigma = postCov, tail = "both")
+```
+
+## Problem 6 - Posterior sampling with the Metropolis-Hastings algorithm
+### Problem 6a)
+
+```{r}
+RWMsampler <- function(logPostFunc, initVal, nSim, nBurn, Sigma, c, ...) {
+    # Run the algorithm for nSim iterations
+    # using the multivariate proposal N(theta_previous_draw, c*Sigma)
+    # Return the posterior draws after discarding nBurn iterations as burn-in
+    draws <- matrix(rep(0, nSim * 5), ncol = 5)
+    for (i in 1:nSim) {
+        temp <- as.vector(rmvnorm(1, mean = initVal, sigma = c * Sigma))
+        alpha <- min(1, exp(logPostFunc(temp, ...) - logPostFunc(initVal, ...)))
+        u <- runif(1)
+        if (alpha >= u) {
+            # effective draw
+            draws[i, ] <- temp
+        } else {
+            draws[i, ] <- initVal
+        }
+
+        # update previous value
+        initVal <- draws[i, ]
+    }
+
+    return(draws[(nBurn + 1):nSim, ])
+}
+```
+
+### Problem 6b)
+```{r}
+nSim <- 5000
+nBurn <- 1000
+inital_value = rep(0, covariate_length)
+c = 0.5
+Sigma = postCov
+draws <- RWMsampler(LogPostPoissonReg, inital_value, nSim, nBurn, Sigma, c, X, y, mu_0 = mu_0, sigma_0 = sigma_0)
+head(draws, 20)
+
+plotMarginal(draws)
+```
+
+### Problem 6c)
+#### Plot the MCMC trajectories
+plot all draws seperated by each parameter.
+```{r}
+matplot(draws,
+    type = "l", lwd = 1, lty = 1,
+    col = 1:5, xlab = "Observation", ylab = "Value", main = "MCMC Trajectories"
+)
+
+legend("topright", legend = paste("Beta", 1:5), col = 1:5, lty = 1, lwd = 1)
+```
+
+#### Cumulative Estimates of Posterior Mean
+Use sample mean as estimator to estimate posterior mean. In large sample, sample mean is around a stable value, which meets convergence requirement.
+```{r}
+drawCumulative <- function(draws) {
+    posterior_mean <- matrix(rep(0, length(draws)), ncol = dim(draws)[2])
+    for (i in seq(1, dim(draws)[1])) {
+        for (j in seq(1, dim(draws)[2])) {
+            posterior_mean[i, j] <- mean(draws[1:i, j])
+        }
+    }
+
+    matplot(posterior_mean,
+        type = "l", lwd = 1, lty = 1,
+        col = 1:5, xlab = "#draw", ylab = "sample mean", main = "Cumulative Estimates of Posterior Mean"
+    )
+
+    legend("topright", legend = paste("Beta", 1:5), col = 1:5, lty = 1, lwd = 1)
+}
+
+drawCumulative(draws)
+```
+
+#### Rerun the Sampler with Unit Vector Initial Value
+Change the initial value of proposed distribution from zero vector to identity vector, the posterior estimates has not been changed, still converging to same estimates. So changing the initial value doesn't influence the convergence.
+```{r}
+inital_value = rep(1, covariate_length) # set the new initial value
+new_draws <- RWMsampler(LogPostPoissonReg, inital_value, nSim, nBurn, Sigma, c, X, y, mu_0 = mu_0, sigma_0 = sigma_0)
+
+drawCumulative(new_draws)
+```
+
+### Problem 6d)
+Set the covariance matrix to $I_p$, re-run the random walk, and get sample. Compared to samples from Problem 6b), the current samples has more ineffective draws, i.e. many draws are rejected and remained as previous effective draw, which shows many duplicate draws in sample. Because the current covariance matrix is much larger, that means when getting draws from proposed distribution, many values with small density will be targeted, and the acceptance probability will be low, thus making this draw rejected and stay.
+\begin{equation} 
+\alpha = \min\left(1, \frac{p(\theta^{i} \mid y)}{p(\theta^{(i-1)} \mid y)}\right)
+\end{equation}
+```{r}
+new_covariance_draws <- RWMsampler(LogPostPoissonReg, rep(0, 5), nSim, nBurn, Sigma = diag(5), c = 1, X, y, mu_0 = mu_0, sigma_0 = sigma_0)
+head(new_covariance_draws, 20)
+```
+
+## Problem 7 - Posterior sampling with the HMC algorithm in Stan
+### Problem 7a)
+Use stan to do approximation and sampling.
+```{r}
+# Data
+data <- list(X = X, y = y, n = dim(X)[1], mu_0 = mu_0, sigma_0 = sigma_0, covariate_length = covariate_length)
+
+# Model
+PoissonRegModel <- "
+data {
+  int<lower=1> n;          // number of observations
+  int<lower=1> covariate_length;          // dimension
+  matrix[n, covariate_length] X;          // observed data
+  int<lower=0> y[n];
+}
+
+parameters {
+  vector[covariate_length] theta;
+}
+
+model {
+// prior
+theta ~ multi_normal(rep_vector(0, 5), diag_matrix(rep_vector(10, covariate_length)));
+
+// likelihood
+y ~ poisson_log(X * theta);
+}
+"
+```
+
+```{r}
+# Stan to simulate from the posterior in the Bernoulli model with Beta prior
+rstan_options(auto_write = TRUE)
+
+# Do the fitting of the model
+burnin <- 1000
+niter <- 2000
+fit1 <- stan(
+    model_code = PoissonRegModel,
+    data = data,
+    warmup = burnin,
+    iter = niter,
+    chains = 4
+)
+
+# Extract posterior samples
+postDraws <- extract(fit1)
+
+# Do automatic traceplots of all chains
+traceplot(fit1)
+
+plotMarginal(postDraws$theta)
+```
+
+```{r}
+print(fit1, digits_summary = 3)
+```
+
+### Problem 7b)
+Do prediction
+```{r}
+# Model
+PoissonRegModelPred <- "
+data {
+  int<lower=1> n;          // number of observations
+  int<lower=1> covariate_length;          // dimension
+  matrix[n, covariate_length] X;          // observed data
+  int<lower=0> y[n];
+}
+
+parameters {
+  vector[covariate_length] theta;
+}
+
+model {
+// prior
+theta ~ multi_normal(rep_vector(0, 5), diag_matrix(rep_vector(10, covariate_length)));
+
+// likelihood
+y ~ poisson_log(X * theta);
+}
+
+generated quantities {
+  row_vector[5] xNew = [1, 10, 0.45, 0.5, 0.89];
+  int<lower=0> y_new;
+  y_new = poisson_log_rng(xNew * theta);
+}
+"
+
+
+# Do the fitting of the model
+burnin <- 1000
+niter <- 2000
+fit1 <- stan(
+    model_code = PoissonRegModelPred,
+    data = data,
+    warmup = burnin,
+    iter = niter,
+    chains = 4
+)
+
+# Print the fitted model
+print(fit1, digits_summary = 3)
+```
+
+The sample mean of `y_new` is 18.152. It's believed the upcoming release, with the following covariate vector. The expected bugs of this release is 18.152.
+```{r}
+xNew <- c(1, 10, 0.45, 0.5, 0.89)
+```
+
+### Problem 7c)
+```{r}
+# Model
+PoissonRegModelPred <- "
+data {
+  int<lower=1> n;          // number of observations
+  int<lower=1> covariate_length;          // dimension
+  matrix[n, covariate_length] X;          // observed data
+  int<lower=0> y[n];
+}
+
+parameters {
+  vector[covariate_length] theta;
+  real<lower=0> r;
+}
+
+model {
+// prior
+theta ~ multi_normal(rep_vector(0, 5), diag_matrix(rep_vector(10, covariate_length)));
+r ~ exponential(1);
+
+// likelihood
+y ~ neg_binomial_2_log(X * theta, r);
+}
+"
+
+
+# Do the fitting of the model
+burnin <- 1000
+niter <- 2000
+fit3 <- stan(
+    model_code = PoissonRegModelPred,
+    data = data,
+    warmup = burnin,
+    iter = niter,
+    chains = 4
+)
+```
+
+```{r}
+# Print the fitted model
+print(fit3, digits_summary = 3)
+
+# Extract posterior samples
+postDraws <- extract(fit3)
+
+hist(postDraws$r,
+    freq = FALSE, col = "lightgray"
+)
+```
+The scalar parameter $r$ controls dispersion. According to marginal distribution of $r$, it's small with sample mean equal to 2.082. That means there is overdispersion and poisson regression can not capture that. Poission regression is not suitable in this use case.
