@@ -1,0 +1,67 @@
+
+- explicit $\sigma^2$ first and use it in $\theta$ when using stan
+```{r}
+'
+// the model connects parameters to the data
+model {
+  sigma2 ~ scaled_inv_chi_square(nu0, sqrt(sigma20));
+  theta ~ normal(mu0, sqrt(sigma2/kappa0)); // use new sigma2 in theta distribution
+  y ~ normal(theta, sqrt(sigma2));
+}
+'
+```
+
+```{r}
+#install.packages("rstan)
+library(rstan)
+
+options(mc.cores = parallel::detectCores())
+rstan_options(auto_write = TRUE)
+
+iidnormal = '
+
+// data and prior hyperparameters
+data {
+  // data
+  int<lower=0> n;
+  vector[n] y;
+  // prior
+  real mu0;
+  real<lower=0> kappa0;
+  real<lower=0> nu0;
+  real<lower=0> sigma20;
+}
+
+// specify which are the model parameters
+parameters {
+    real theta;
+    real<lower=0> sigma2;
+}
+
+// the model connects parameters to the data
+model {
+  sigma2 ~ scaled_inv_chi_square(nu0, sqrt(sigma20));
+  theta ~ normal(mu0, sqrt(sigma2/kappa0));
+  y ~ normal(theta, sqrt(sigma2));
+}
+'
+
+# Set up the data
+data <- list(n = 5, y = rnorm(5, mean = 10, sd=2))
+
+# Set up prior
+prior <- list(mu0 = 20, kappa0 = 1, nu0 = 5, sigma20 = 5^2)
+
+fit = stan(model_code = iidnormal, data = c(data, prior), iter = 1000, refresh = 0)
+summary(fit, pars = c("theta", "sigma2"))$summary
+```
+
+inefficiency factor, autocorrelation
+
+- move fast, no trend
+- quantity: every time you have a draw, stan will calculate this
+- good predictive distribution covers test data
+- loo package sample from n posterior distributions
+
+- how the data is likely in the model
+- use exponential function to parameterize the only positive value

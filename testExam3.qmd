@@ -1,3 +1,30 @@
+---
+title: "Example Exam 3"
+author:   
+  - Jinzhe Yang
+date: last-modified
+format: 
+  html: default
+  pdf:
+    keep-tex: true
+    include-in-header: 
+       text: |
+         \usepackage{fvextra}
+         \DefineVerbatimEnvironment{Highlighting}{Verbatim}{breaklines,commandchars=\\\{\}}
+         \DefineVerbatimEnvironment{OutputCode}{Verbatim}{breaklines,commandchars=\\\{\}}
+toc: true
+language: 
+  title-block-author-single: " "
+toc-title-document: "Content"
+crossref-fig-title: "Figure"
+theme: lumen
+title-block-banner-color: Primary
+callout-warning-caption: "Warning"
+callout-note-caption: "Note!"
+callout-tip-caption: "Tip"
+editor: visual
+---
+
 ```{r}
 ## helper-codes
 
