@@ -130,6 +130,18 @@ head(res$draws)
 res$acceptance
 ```
 
+```{r}
+# use the code from hw2
+source("RWMsampler.R")
+
+initVal = c(0)
+Sigma = matrix(1,1,1)
+c = 0.04
+rmvnorm(1, mean = initVal, sigma = c * Sigma)
+draws = RWMsampler(LogPost, c(0), nSim = 1100, nBurn = 100, Sigma = matrix(1,1,1), c = 0.04, x)
+mean(draws)
+```
+
 ### b. 
 show sample mean
 ```{r}
@@ -140,6 +152,9 @@ for (i in 1:length(draws)) {
 }
 
 plot(1:length(sampleMeanList), sampleMeanList, type = "l", xlab = "sample size")
+
+sampleMeanList[length(draws)]
+mean(draws)
 ```
 
 ## 4. Beta regression
