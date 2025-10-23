@@ -121,6 +121,7 @@ qmvnorm(0.95, mean = postMode, sigma = postCov, tail = "both")
 ```
 
 ## Problem 6 - Posterior sampling with the Metropolis-Hastings algorithm
+
 ### Problem 6a)
 
 ```{r}
@@ -149,6 +150,7 @@ RWMsampler <- function(logPostFunc, initVal, nSim, nBurn, Sigma, c, ...) {
 ```
 
 ### Problem 6b)
+
 ```{r}
 nSim <- 5000
 nBurn <- 1000
@@ -162,8 +164,11 @@ plotMarginal(draws)
 ```
 
 ### Problem 6c)
+
 #### Plot the MCMC trajectories
+
 plot all draws seperated by each parameter.
+
 ```{r}
 matplot(draws,
     type = "l", lwd = 1, lty = 1,
@@ -174,7 +179,9 @@ legend("topright", legend = paste("Beta", 1:5), col = 1:5, lty = 1, lwd = 1)
 ```
 
 #### Cumulative Estimates of Posterior Mean
+
 Use sample mean as estimator to estimate posterior mean. In large sample, sample mean is around a stable value, which meets convergence requirement.
+
 ```{r}
 drawCumulative <- function(draws) {
     posterior_mean <- matrix(rep(0, length(draws)), ncol = dim(draws)[2])
@@ -196,7 +203,9 @@ drawCumulative(draws)
 ```
 
 #### Rerun the Sampler with Unit Vector Initial Value
+
 Change the initial value of proposed distribution from zero vector to identity vector, the posterior estimates has not been changed, still converging to same estimates. So changing the initial value doesn't influence the convergence.
+
 ```{r}
 inital_value = rep(1, covariate_length) # set the new initial value
 new_draws <- RWMsampler(LogPostPoissonReg, inital_value, nSim, nBurn, Sigma, c, X, y, mu_0 = mu_0, sigma_0 = sigma_0)
@@ -205,18 +214,22 @@ drawCumulative(new_draws)
 ```
 
 ### Problem 6d)
-Set the covariance matrix to $I_p$, re-run the random walk, and get sample. Compared to samples from Problem 6b), the current samples has more ineffective draws, i.e. many draws are rejected and remained as previous effective draw, which shows many duplicate draws in sample. Because the current covariance matrix is much larger, that means when getting draws from proposed distribution, many values with small density will be targeted, and the acceptance probability will be low, thus making this draw rejected and stay.
-\begin{equation} 
+
+Set the covariance matrix to $I_p$, re-run the random walk, and get sample. Compared to samples from Problem 6b), the current samples has more ineffective draws, i.e. many draws are rejected and remained as previous effective draw, which shows many duplicate draws in sample. Because the current covariance matrix is much larger, that means when getting draws from proposed distribution, many values with small density will be targeted, and the acceptance probability will be low, thus making this draw rejected and stay. \begin{equation} 
 \alpha = \min\left(1, \frac{p(\theta^{i} \mid y)}{p(\theta^{(i-1)} \mid y)}\right)
 \end{equation}
+
 ```{r}
 new_covariance_draws <- RWMsampler(LogPostPoissonReg, rep(0, 5), nSim, nBurn, Sigma = diag(5), c = 1, X, y, mu_0 = mu_0, sigma_0 = sigma_0)
 head(new_covariance_draws, 20)
 ```
 
 ## Problem 7 - Posterior sampling with the HMC algorithm in Stan
+
 ### Problem 7a)
+
 Use stan to do approximation and sampling.
+
 ```{r}
 # Data
 data <- list(X = X, y = y, n = dim(X)[1], mu_0 = mu_0, sigma_0 = sigma_0, covariate_length = covariate_length)
@@ -273,7 +286,9 @@ print(fit1, digits_summary = 3)
 ```
 
 ### Problem 7b)
+
 Do prediction
+
 ```{r}
 # Model
 PoissonRegModelPred <- "
@@ -320,11 +335,13 @@ print(fit1, digits_summary = 3)
 ```
 
 The sample mean of `y_new` is 18.152. It's believed the upcoming release, with the following covariate vector. The expected bugs of this release is 18.152.
+
 ```{r}
 xNew <- c(1, 10, 0.45, 0.5, 0.89)
 ```
 
 ### Problem 7c)
+
 ```{r}
 # Model
 PoissonRegModelPred <- "
@@ -374,4 +391,5 @@ hist(postDraws$r,
     freq = FALSE, col = "lightgray"
 )
 ```
+
 The scalar parameter $r$ controls dispersion. According to marginal distribution of $r$, it's small with sample mean equal to 2.082. That means there is overdispersion and poisson regression can not capture that. Poission regression is not suitable in this use case.
