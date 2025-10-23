@@ -1,0 +1,198 @@
+```{r}
+## helper-codes
+
+# install.packages("mvtnorm") # uncomment if this package is not installed.
+library(mvtnorm)
+
+######## Problem 1
+load("cauchy.RData") # loads the data vector x.
+
+# Defines the log-Cauchy density
+dcauchy <- function(x, mu) {
+    return(-log(pi) - log(1 + (x - mu)^2))
+}
+
+########  Problem 2
+# Nothing to load for this problem
+
+########  Problem 3
+load("./cauchy.RData") # loads the data vector x.
+
+######## Problem 4
+
+load("./debtratio.RData") # load the vector y and matrix of covariates X
+
+```
+
+## 1. Cauchy distribution
+### a. Posterior Distribution
+```{r}
+LogPost <- function(x, theta, mu_0 = 0, sigma2_0 = 1) {
+    logPrior <- dnorm(theta, mean = mu_0, sd = sqrt(sigma2_0), log = TRUE)
+
+    logLikeli <- sum(dcauchy(x, mu = theta))
+
+    return(logPrior + logLikeli)
+}
+thetaGrid <- seq(-10, 10, length = 1000)
+logPostList <- rep(NA, length(thetaGrid))
+for (i in 1:length(thetaGrid)) {
+    logPostList[i] <- LogPost(x, thetaGrid[i])
+}
+# logPostList
+LogPost(x, -9.97997998)
+postList <- exp(logPostList)
+postDen <- postList / sum(postList) / (thetaGrid[2] - thetaGrid[1])
+plot(thetaGrid, postDen,
+    type = "l",
+    ylab = "posterior density"
+)
+```
+
+### b. Posterior Mean
+Under quadratic loss function, the optimal point estimate is posterior mean. Use intergration to calculate posterior mean
+
+```{r}
+sum(thetaGrid * postDen * (thetaGrid[2] - thetaGrid[1]))
+```
+
+```{r}
+# check posterior mode
+initialValue <- 0
+optim(initialValue, LogPost,
+    method = "BFGS", control = list(fnscale = -1),
+    hessian = TRUE,
+    x = x
+)
+
+# check total posterior pdf intergrated to 1
+sum(postDen * (thetaGrid[2] - thetaGrid[1]))
+```
+
+### c. Construct at 95% credible interval for θ.
+HPD or equal-tail. Using equal-tail, 2.5% area on the left tail, 2.5% area on the right tail.
+
+```{r}
+cumulative_list <- rep(NA, length(thetaGrid))
+for (i in 1:length(thetaGrid)) {
+    area <- postDen[i] * (thetaGrid[2] - thetaGrid[1])
+    if (i == 1) {
+        cumulative_list[i] <- area
+    } else {
+        cumulative_list[i] <- area + cumulative_list[i - 1]
+    }
+}
+# cumulative_list
+# which(cumulative_list == 0.025 )
+binSize <- thetaGrid[2] - thetaGrid[1]
+cumulative_list[1]
+
+# cumsum function do cdf
+
+tail(thetaGrid[cumsum(postDen * binSize) <= 0.025], 1)
+tail(thetaGrid[cumsum(postDen * binSize) <= 0.975], 1)
+
+head(thetaGrid[cumsum(postDen * binSize) >= 0.975], 1)
+```
+
+## 2. Binomial data
+
+## 3. Metropolis-Hastings
+```{r}
+# random walk metropolis
+# return samples and accpetance rate
+RandomWalk <- function(LogPost, mu_0, c, nSim, nBurn, ...) {
+    draws <- rep(NA, nSim)
+    acceptance <- NA
+    rejNum <- 0
+    for (i in 1:nSim) {
+        if (i == 1) {
+            # first draw
+            draws[i] <- rnorm(1, mean = mu_0, sd = sqrt(c))
+        } else {
+            temp <- rnorm(1, mean = draws[i - 1], sd = sqrt(c))
+            u <- runif(1)
+            alpha <- min(1, exp(LogPost(theta = temp, ...) - LogPost(theta = draws[i - 1], ...)))
+            if (u > alpha) {
+                # reject
+                draws[i] <- draws[i - 1]
+                rejNum <- rejNum + 1
+            } else {
+                draws[i] <- temp
+            }
+        }
+    }
+    return(list(draws = draws[(nBurn + 1):nSim], acceptance = rejNum / nSim))
+}
+
+res <- RandomWalk(LogPost, mu_0 = 0, c = 0.04, nSim = 1100, nBurn = 100, x)
+head(res$draws)
+res$acceptance
+```
+
+### b. 
+show sample mean
+```{r}
+draws <- res$draws
+sampleMeanList <- rep(NA, length(draws))
+for (i in 1:length(draws)) {
+    sampleMeanList[i] <- mean(draws[1:i])
+}
+
+plot(1:length(sampleMeanList), sampleMeanList, type = "l", xlab = "sample size")
+```
+
+## 4. Beta regression
+```{r}
+LogPostBetaReg <- function(Beta, X, y, mu_0 = 0, sigma2_0 = 10^2) {
+    mu <- exp(X %*% Beta) / (1 + exp(X %*% Beta))
+    fi <- 4
+    logLikeli <- sum(dbeta(y, mu * fi, (1 - mu) * fi, log = TRUE))
+    logPrior <- sum(dnorm(Beta, mean = mu_0, sd = sqrt(sigma2_0), log = TRUE))
+
+    # logPrior <- dmvnorm(Beta, mean = rep(mu_0, 5), sigma = sigma2_0*diag(5), log = TRUE)
+
+    return(logLikeli + logPrior)
+}
+
+initialValue <- c(0, 0, 0, 0, 0)
+LogPostBetaReg(initialValue, X, y) # (1,2,3,4,5) returns -inf
+
+res <- optim(initialValue, LogPostBetaReg,
+    method = "BFGS", control = list(fnscale = -1), hessian = TRUE,
+    X = X,
+    y = y
+)
+
+postMode <- res$par
+postCov <- -solve(res$hessian)
+postMode
+postCov
+```
+
+### b.
+Check the marginal distribution for `logsale`
+```{r}
+thetaGrid <- seq(-0.1, 0.2, length = 1000)
+densityList <- dnorm(thetaGrid, mean = postMode[4], sd = sqrt(postCov[4, 4]))
+plot(thetaGrid, densityList, type = "l")
+
+lower_95 <- qnorm(0.025, mean = postMode[4], sd = sqrt(postCov[4, 4]))
+upper_95 <- qnorm(0.025, mean = postMode[4], sd = sqrt(postCov[4, 4]), lower.tail = FALSE)
+
+abline(v = lower_95, col = "green", lty = 3, lw = 2)
+abline(v = upper_95, col = "green", lty = 3, lw = 2)
+```
+
+$\beta_4 = 0$ is covered in 95% credible interval. So covariate `logsale` can be removed.
+
+### c.
+```{r}
+# get simulation draws from normal approximation
+draws <- rmvnorm(1000, mean = postMode, sigma = postCov)
+x_tilde <- c(1, 0.5, 1, 5, 0)
+mu <- exp(draws %*% x_tilde) / (1 + exp(draws %*% x_tilde))
+fi <- 4
+y_tilde <- rbeta(length(mu * fi), mu * fi, (1 - mu) * fi)
+hist(y_tilde, col = "lightgray", freq = FALSE)
+```

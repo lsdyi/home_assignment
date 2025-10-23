@@ -1,0 +1,237 @@
+## 1. laplace distribution
+```{r}
+# help codes
+library(mvtnorm)
+
+######## Problem 1
+load("Laplace.RData") # loads the data y and X. Only use the vector y for this problem.
+
+# Defines the Laplace density
+dlaplace <- function(x, mu = 0, sigma = 1, log = FALSE) {
+    if (log) {
+        return(-log(2 * sigma) - abs(x - mu) / sigma)
+    } else {
+        return((1 / (2 * sigma)) * exp(-abs(x - mu) / sigma))
+    }
+}
+
+# Defines the Laplace random number generator
+rlaplace <- function(n, mu = 0, sigma = 1) {
+    x <- runif(n)
+    y <- runif(n)
+    z <- log(x / y)
+    return(mu + sigma * z)
+}
+```
+
+```{r}
+head(X)
+head(y)
+```
+
+### (a) Credits: 4p. Plot the posterior of µ given the data in y over a suitable grid. Use the prior µ ∼ N(0, 1).
+```{r}
+# posterior_dist \propto likelihood*prior
+PostLaplace <- function(mu, sigma, y) {
+    likelihood <- prod(dlaplace(y, mu, sigma))
+    prior <- dnorm(mu)
+
+    return(likelihood * prior)
+}
+
+sigma <- 1.23
+PostLaplace(2, sigma, y)
+
+# plot posterior dist
+thetaGrid <- seq(-3, 3, length = 100)
+post_dist <- rep(NA, length(thetaGrid))
+for (i in 1:length(thetaGrid)) {
+    post_dist[i] <- PostLaplace(thetaGrid[i], sigma, y)
+}
+
+# cal density: normalize and division
+theta_delta <- thetaGrid[2] - thetaGrid[1]
+post_dist <- post_dist / sum(post_dist) / theta_delta
+
+plot(thetaGrid, post_dist,
+    type = "l",
+    lwd = 2,
+    col = "lightgray",
+    xlab = "mu",
+    ylab = "Density",
+)
+```
+
+```{r}
+# test logposterior dist
+LogPostLaplace <- function(mu, sigma, y) {
+    likelihood <- sum(dlaplace(y, mu, sigma, log = TRUE))
+    prior <- dnorm(mu, log = TRUE)
+
+    return(likelihood + prior)
+}
+
+log(PostLaplace(2, sigma, y))
+LogPostLaplace(2, sigma, y) # same as above
+```
+
+### (b) Credits: 2p. Compute the optimal Bayesian point estimate of µ under the zero-one loss function.
+Using zero-one loss function, the optimal Bayesian point eslimate is posterior mode. Using `optim` to get the maximizer of posterior density. The optimizer is 1.126792.
+```{r}
+initial_value <- 0.1
+res1 <- optim(initial_value, PostLaplace,
+    method = "BFGS", control = list(fnscale = -1),
+    sigma = sigma,
+    y = y,
+)
+res1 # @todo: res1 wrong!
+
+# test with logposterior density
+initial_value <- 8
+res2 <- optim(initial_value, LogPostLaplace,
+    method = "BFGS", control = list(fnscale = -1),
+    sigma = sigma,
+    y = y,
+)
+res2
+```
+
+### (c) Credits: 4p. Discuss two different ways of doing a Bayesian comparison of the above Laplace model and the iid N(µ, σ2) model. No need for any computations here.
+bayesian comparison??
+- LOO
+- posterior model probability: sensitive for prior
+---
+
+- the posterior of $\mu$ has low variance, which means more accurate to do point estimate
+
+## 2. Poisson model
+### (a) Credits: 4p. Derive the posterior distribution of θ for the conjugate prior.
+
+### (b)
+```{r}
+alpha_grid <- seq(0.1, 3, length = 1000)
+beta_grid <- alpha_grid / 10
+prob_list <- rep(NA, length(alpha_grid))
+for (i in 1:length(alpha_grid)) {
+    theta = rgamma(10000, shape = alpha_grid[i], rate = beta_grid[i])    
+    draws = rpois(10000, theta)
+    prob_list[i] = mean(draws > 20)
+    # print(theta)
+}
+# prob_list≥
+plot(alpha_grid, prob_list)
+# abline(h = exp(optim_res$value), v = optim_res$par, lty = 2, lwd = 2, col = 2)
+
+# pgamma(20, alpha, beta, lower.tail = FALSE)
+```
+
+## 3. Decision making
+```{r}
+# helper code
+data <- c(3, 6, 9, 4, 5)
+
+utility <- function(yTilde, a, p = 10000, c = 2000) {
+    u <- rep(0, length(yTilde))
+    u[yTilde <= a] <- p * yTilde[yTilde <= a] - c * (a - yTilde[yTilde <= a])
+    u[yTilde > a] <- p * a
+    return(u)
+}
+```
+
+### (a)
+```{r}
+hist(y, col = "lightgray", freq = FALSE)
+draws <- rexp(10000, rate = 5)
+a_grid <- 1:20
+u_list <- utility(draws, a_grid)
+# u_list
+# plot(a_grid, u_list, xlab = "storage, a", ylab = "Expected Utility", type = "l",
+# lwd = 3, col = "lightgray")
+# abline(v = a_grid[which.max(u_list)], lty = "dotted")
+```
+
+## 4. Laplace regression
+### (a) Credits: 5p. Compute a normal approximation of the joint posterior p(β0, β1, σ|X, y). Use independent N(0, 102) priors for β0 and β1, and Expon(1) prior for σ. Plot the marginal posteriors for each of the three parameters.
+```{r}
+LogPostLapReg <- function(param, X, y, mu_0, sigma2_0, lambda_0) {
+    beta <- param[1:2]
+    sigma <- param[3]
+    logLike <- sum(dlaplace(y, X %*% beta, sigma, log = TRUE))
+    logPrior <- sum(dnorm(beta, mean = mu_0, sd = sqrt(sigma2_0), log = TRUE)) + dexp(sigma, rate = lambda_0, log = TRUE)
+
+    return(logLike + logPrior)
+}
+
+mu_0 <- 0
+sigma2_0 <- 10^2
+lambda_0 <- 1
+
+initial_value <- c(1, 2, 3)
+res <- optim(initial_value, LogPostLapReg,
+    method = "BFGS", control = list(fnscale = -1), hessian = TRUE,
+    X = X,
+    y = y,
+    mu_0 = mu_0,
+    sigma2_0 = sigma2_0,
+    lambda_0 = lambda_0
+)
+
+res
+
+initial_value <- c(10, 20, 30)
+res <- optim(initial_value, LogPostLapReg,
+    method = "BFGS", control = list(fnscale = -1), hessian = TRUE,
+    X = X,
+    y = y,
+    mu_0 = mu_0,
+    sigma2_0 = sigma2_0,
+    lambda_0 = lambda_0
+)
+# Warning in log(2 * sigma): NaNs produced
+# log(negative)!!!!!
+res
+```
+
+```{r}
+postMode <- res$par
+postVar <- -solve(res$hessian)
+
+# plot marginal
+par(mfrow = c(1, 3))
+
+for (i in 1:length(postMode)) {
+    mu <- postMode[i]
+    sigma2 <- postVar[i, i]
+    thetaGrid <- seq(-2, 2, length = 100)
+    density <- dnorm(thetaGrid, mean = mu, sd = sqrt(sigma2))
+    print(head(density))
+    plot(thetaGrid, density,
+        type = "l",
+        lwd = 2,
+        col = "lightgray",
+        xlab = sprintf("theta-%d", i),
+        ylab = "Density",
+    )
+}
+
+theta <- rmvnorm(n = 10000, mean = postMode, sigma = postVar)
+for (i in 1:ncol(theta)) {
+    temp <- theta[, i]
+    hist(temp,
+        col = "lightgray", freq = FALSE, main = sprintf("Hisogram of theta-%d", i),
+        xlab = sprintf("theta-%d", i)
+    )
+}
+```
+
+### (b) Credits: 3p. Use simulation to compute the predictive distribution p(˜y|x, ˜ X, y) for a new observation with x˜ = 4.
+
+```{r}
+beta = theta[, 1:2]
+sigma = theta[,3]
+mu = beta%*%c(1, 4)
+
+# dlaplace(beta%*%X,)
+draws = rlaplace(10000, mu, sigma)
+hist(draws, 180)
+```

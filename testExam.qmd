@@ -1,0 +1,291 @@
+```{r}
+library(mvtnorm)
+```
+
+## 1. gumbel distribution
+### (a)
+```{r}
+load("Gumbel.RData") # loads the data y and X. Only use the vector y for Problem 1.
+
+# Defines the Gumbel density
+dgumbel <- function(x, mu = 0, b = 1, log = FALSE) {
+    z <- (x - mu) / b
+    if (log) {
+        return(-log(b) - (z + exp(-z)))
+    } else {
+        return((1 / b) * exp(-(z + exp(-z))))
+    }
+}
+
+# Defines the Gumbel random number generator
+rgumbel <- function(n, mu = 0, b = 1) {
+    u <- runif(n)
+    return(mu - b * log(-log(u)))
+}
+
+```
+
+```{r}
+# par: variable vector of function
+# y: sample
+# b: hyperparemeter for model
+# mu_0: hyperparemeter for prior
+# sigma_0: hyperparemeter for prior
+LogPostGumbel <- function(mu, y, b, mu_0, sigma_0) {
+    logLikelihood <- sum(dgumbel(y, mu, b, log = TRUE))
+    logPripr <- dnorm(mu, mean = mu_0, sd = sqrt(sigma_0), log = TRUE)
+
+    return(logLikelihood + logPripr)
+}
+
+b <- 3
+mu_0 <- 0
+sigma_0 <- 3^2
+
+# LogPostGumbel(c(1), y, b, mu_0, sigma_0) # testing logpost
+
+# optim
+inital_value <- 0
+optim_res <- optim(inital_value, LogPostGumbel, gr = NULL, y = y, b = b, mu_0 = mu_0, sigma_0 = sigma_0, method = c("BFGS"), control = list(fnscale = -1), hessian = TRUE)
+optim_res
+
+normal_mean <- optim_res$par
+normal_var <- -solve(optim_res$hessian)
+
+# plot posterior histogram, using normal approximation
+draws <- rnorm(10000, mean = normal_mean, sd = sqrt(normal_var))
+hist(draws, col = "lightgray", freq = FALSE)
+
+```
+
+```{r}
+# plot posterior distribution (lacking normalized factor, so not pdf)
+thetaGrid <- c(seq(min(draws), max(draws), length = 100))
+delta_theta <- thetaGrid[2] - thetaGrid[1]
+
+post_den <- rep(NA, 100)
+for (i in 1:length(thetaGrid)) {
+    theta <- thetaGrid[i]
+    post_den[i] <- exp(LogPostGumbel(theta, y, b, mu_0, sigma_0))
+}
+plot(thetaGrid, post_den/sum(post_den)/delta_theta,
+    type = "l",
+    lwd = 2,
+    col = "blue",
+    xlab = "θ (Probability of Heads)",
+    ylab = "Density",
+)
+abline(h = exp(optim_res$value), v = optim_res$par, lty = 2, lwd = 2, col = 2)
+
+# integration to half the area
+delta_theta <- thetaGrid[2] - thetaGrid[1]
+area <- sum(delta_theta * post_den)
+cum_area <- rep(NA, length(thetaGrid))
+for (i in 1:length(thetaGrid)) {
+    cum_area[i] <- sum(delta_theta * post_den[1:i])
+}
+
+plot(thetaGrid, cum_area,
+    type = "l",
+    lwd = 2,
+    col = "blue",
+    xlab = "θ (Probability of Heads)",
+    ylab = "Density",
+)
+
+med <- median(cum_area)
+
+tolerance <- 1e-112
+which(abs(cum_area - area / 2) <= tolerance)
+# which(cum_area in area/2)
+
+post_dist <- function(theta) {
+    b <- 3
+    mu_0 <- 0
+    sigma_0 <- 3^2
+    return(exp(LogPostGumbel(theta, y, b, mu_0, sigma_0)))
+}
+integrate(post_dist, min(draws), max(draws))
+
+```
+
+### (b)
+Use the sample mean of posterior distribution to be optimal bayesian point eslimate of $\mu$. $|\mu - \alpha| = |1.107827-\alpha|$
+```{r}
+mean(draws)
+```
+
+```{r}
+loss_fun <- function(param) {
+    mu <- param[1]
+    a <- param[2]
+}
+
+thetaGrid.hat <- thetaGrid[which.min(abs(cumsum(post_den) - 0.5))]
+thetaGrid.hat
+```
+
+### (c)
+The equal tail interval for posterior sample is $[0.5090468, 1.6930887]$. Credible interval comes from one sample while frequentist condidence interval comes from all possible sample. 95% of all possible dataset of size n=100 could be sampled from population.
+```{r}
+quantile(draws, c(0.025, 0.975))
+```
+
+## 2. Conjugate prior
+### (a)
+Use Gamma Prior.
+\begin{equation}
+    \theta \sim Gamma(\alpha_0, \beta_0)
+\end{equation}
+
+\begin{align*}
+    p(\theta | x) & \propto p(x_1,...,x_n|\theta) \cdot p(\theta) \\
+                  & = \prod_{i=1}^{n}p(x_i|\theta)\cdot p(\theta) \\
+                  & = \prod_{i=1}^{n} \theta^2xe^{-x_i\theta} \cdot p(\theta) \\
+                  & \propto \theta^{2n} \cdot e^{-\theta n\bar{x}} \cdot \theta^{\alpha_0 -1} \cdot e^{-\beta \theta} \\
+                  & = \theta^{2n+\alpha_0-1} \cdot e^{-\theta (n\bar{x}+\beta_0)} \\
+                  & \sim Gamma(2n+\alpha_0, n\bar{x}+\beta_0)
+\end{align*}
+
+### (b)
+Jeffrey's prior is square root of fisher information.
+\begin{align*}
+    Logpp(x | \theta) & = log
+\end{align*}
+
+## 3. Linear regression
+```{r}
+# Load the cars data
+load("carsdata.RData") # loads vector y and matrix with covariates X (including a column of ones for the intercept)
+
+# Defining a function that simulates from the scaled inverse Chi-square distribution
+rScaledInvChi2 <- function(n, df, scale) {
+    return((df * scale) / rchisq(n, df = df))
+}
+
+BayesLinReg <- function(y, X, mu_0, Omega_0, v_0, sigma2_0, nIter) {
+    # Direct sampling from a Gaussian linear regression with conjugate prior:
+    #
+    # beta | sigma2 ~ N(mu_0, sigma2*inv(Omega_0))
+    # sigma2 ~ Inv-Chi2(v_0,sigma2_0)
+    #
+    # Author: Mattias Villani, IDA, Linkoping University. http://mattiasvillani.com
+    #
+    # INPUTS:
+    #   y - n-by-1 vector with response data observations
+    #   X - n-by-nCovs matrix with covariates, first column should be ones if you want an intercept.
+    #   mu_0 - prior mean for beta
+    #   Omega_0  - prior precision matrix for beta
+    #   v_0      - degrees of freedom in the prior for sigma2
+    #   sigma2_0 - location ("best guess") in the prior for sigma2
+    #   nIter - Number of samples from the posterior (iterations)
+    #
+    # OUTPUTS:
+    #   results$betaSample     - Posterior sample of beta.     nIter-by-nCovs matrix
+    #   results$sigma2Sample   - Posterior sample of sigma2.   nIter-by-1 vector
+
+    # Compute posterior hyperparameters
+    n <- length(y) # Number of observations
+    nCovs <- dim(X)[2] # Number of covariates
+    XX <- t(X) %*% X
+    betaHat <- solve(XX, t(X) %*% y)
+    Omega_n <- XX + Omega_0
+    mu_n <- solve(Omega_n, XX %*% betaHat + Omega_0 %*% mu_0)
+    v_n <- v_0 + n
+    sigma2_n <- as.numeric((v_0 * sigma2_0 + (t(y) %*% y + t(mu_0) %*% Omega_0 %*% mu_0 - t(mu_n) %*% Omega_n %*% mu_n)) / v_n)
+    invOmega_n <- solve(Omega_n)
+
+    # The actual sampling
+    sigma2Sample <- rep(NA, nIter)
+    betaSample <- matrix(NA, nIter, nCovs)
+    for (i in 1:nIter) {
+        # Simulate from p(sigma2 | y, X)
+        sigma2 <- rScaledInvChi2(n = 1, df = v_n, scale = sigma2_n)
+        sigma2Sample[i] <- sigma2
+
+        # Simulate from p(beta | sigma2, y, X)
+        beta_ <- rmvnorm(n = 1, mean = mu_n, sigma = sigma2 * invOmega_n)
+        betaSample[i, ] <- beta_
+    }
+    return(results = list(sigma2Sample = sigma2Sample, betaSample = betaSample))
+}
+```
+
+
+### (a) Credits: 3p. Plot histograms of all six marginal posteriors.
+```{r}
+mu_0 <- rep(0, 5)
+Omega_0 <- diag(5)
+v_0 <- 5
+sigma2_0 <- 5
+nIter <- 1000
+res <- BayesLinReg(y, X, mu_0, Omega_0, v_0, sigma2_0, nIter)
+sigma2Sample <- res$sigma2Sample
+betaSample <- res$betaSample
+
+# plot marginal distribution
+par(mfrow = c(2, 3))
+hist(sigma2Sample, col = "lightgray", freq = FALSE)
+hist(betaSample[, 1], col = "lightgray", freq = FALSE)
+hist(betaSample[, 2], col = "lightgray", freq = FALSE)
+hist(betaSample[, 3], col = "lightgray", freq = FALSE)
+hist(betaSample[, 4], col = "lightgray", freq = FALSE)
+hist(betaSample[, 5], col = "lightgray", freq = FALSE)
+```
+
+### (b) Credits: 3p. Is weight is an important determinant of mpg? Give a satisfactory Bayesian answer.
+Yes, weight is an important determinant. According to sample mean of $\beta_2$, when other covariates don't change and 1 unit change in weight, it will have around 17 unit change in repoonse varibale. Among all the coeffeients, $\beta_2$ is the largest, that means `weight` has biggest impact on `mpg`.
+
+```{r}
+mean(betaSample[, 1])
+```
+
+### (c) Credits: 4p. Given the observed dataset, what is the probability that mpg>40 for a new fourcylinder car with weight = 6 and manual transmission.
+Define the condition $\beta_1 = 6 \; and \;  \beta_2 = 0 \; and \; \beta_3 = 0 \; and \; \beta_4 = 1$
+```{r}
+condition <- betaSample[, 1] == 6 & betaSample[, 2] == 0 & betaSample[, 3] == 0 & betaSample[, 4] == 1
+mean(condition)
+```
+
+```{r}
+y_tilde = c(1, 6, 0, 0, 1)
+y_tilde_draws = rep(NA, (nrow(betaSample)))
+for (i in 1:length(y_tilde_draws)) {
+    temp = rnorm(1, 0, sd = sqrt(sigma2Sample[i]))
+    y_tilde_draws[i] = y_tilde%*%betaSample[i, ]+temp
+}
+betaSample[1, ]
+hist(y_tilde_draws, col = "lightgray", freq = FALSE)
+```
+
+## 4. Gumbel regression
+### (a)
+```{r}
+load("Gumbel.RData") # loads the data y and X. Only use the vector y for Problem 1.
+
+LogPostGumbelReg <- function(param, X, y, mu_0, sigma2_0) {
+    b <- param[3]
+    beta <- param[1:2]
+    logPrior <- sum(dnorm(beta, mean = mu_0, sd = sqrt(sigma2_0), log = TRUE)) + dlnorm(b, log = FALSE)
+    logLikelihood <- sum(dgumbel(y, mu = X %*% beta, b, log = TRUE))
+    return(logPrior + logLikelihood)
+}
+
+inital_value <- c(1, 1, 2)
+mu_0 <- 0
+sigma2_0 <- 10^2
+LogPostGumbelReg(c(1, 1, 2), X, y, mu_0, sigma2_0) # test
+
+res = optim(
+    par = inital_value, LogPostGumbelReg, method = "BFGS", control = list(fnscale = -1), hessian = TRUE,
+    X = X,
+    y = y,
+    mu_0 = mu_0,
+    sigma2_0 = sigma2_0
+)
+
+normal_mean = res$par
+normal_var = -solve(res$hessian)
+res
+normal_var
+```
