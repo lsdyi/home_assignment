@@ -113,9 +113,9 @@ alpha_grid <- seq(0.1, 3, length = 1000)
 beta_grid <- alpha_grid / 10
 prob_list <- rep(NA, length(alpha_grid))
 for (i in 1:length(alpha_grid)) {
-    theta = rgamma(10000, shape = alpha_grid[i], rate = beta_grid[i])    
-    draws = rpois(10000, theta)
-    prob_list[i] = mean(draws > 20)
+    theta <- rgamma(10000, shape = alpha_grid[i], rate = beta_grid[i])
+    draws <- rpois(10000, theta)
+    prob_list[i] <- mean(draws > 20)
     # print(theta)
 }
 # prob_list≥
@@ -128,7 +128,6 @@ plot(alpha_grid, prob_list)
 ## 3. Decision making
 ```{r}
 # helper code
-data <- c(3, 6, 9, 4, 5)
 
 utility <- function(yTilde, a, p = 10000, c = 2000) {
     u <- rep(0, length(yTilde))
@@ -138,16 +137,49 @@ utility <- function(yTilde, a, p = 10000, c = 2000) {
 }
 ```
 
-### (a)
+### (a) predictive distribution follows Poisson(5)
 ```{r}
-hist(y, col = "lightgray", freq = FALSE)
-draws <- rexp(10000, rate = 5)
-a_grid <- 1:20
-u_list <- utility(draws, a_grid)
-# u_list
-# plot(a_grid, u_list, xlab = "storage, a", ylab = "Expected Utility", type = "l",
-# lwd = 3, col = "lightgray")
-# abline(v = a_grid[which.max(u_list)], lty = "dotted")
+n_draws <- 1000
+pred_draws <- rpois(n_draws, 5)
+mean(pred_draws)
+hist(pred_draws, col = "lightgray", freq = FALSE)
+
+a_grid <- 0:20
+utility_list <- rep(NA, length(a_grid))
+for (i in 1:length(a_grid)) {
+    utility_list[i] <- mean(utility(pred_draws, a_grid[i]))
+}
+
+plot(a_grid, utility_list)
+maximizer <- a_grid[which.max(utility_list)]
+abline(v = maximizer, lty = 2, col = "red")
+maximizer
+```
+
+### (b) predictive distribution
+Poisson Model with Gamma prior, the posterior follows $Gamma(n\bar{x}+\alpha, n+\beta)$. Getting $\theta$ draws from gamma simulation.
+```{r}
+data <- c(3, 6, 9, 4, 5)
+alpha_0 <- 5
+beta_0 <- 1
+alpha_n <- sum(data) + alpha_0
+beta_n <- length(data) + beta_0
+n_draw = 1000
+draws = rgamma( n_draw, alpha_n, beta_n)
+
+# get y_tilde draws
+pred_draws = rpois(n_draw, draws)
+
+a_grid <- 0:20
+utility_list <- rep(NA, length(a_grid))
+for (i in 1:length(a_grid)) {
+    utility_list[i] <- mean(utility(pred_draws, a_grid[i]))
+}
+
+plot(a_grid, utility_list)
+maximizer <- a_grid[which.max(utility_list)]
+abline(v = maximizer, lty = 2, col = "red")
+maximizer
 ```
 
 ## 4. Laplace regression
@@ -227,11 +259,11 @@ for (i in 1:ncol(theta)) {
 ### (b) Credits: 3p. Use simulation to compute the predictive distribution p(˜y|x, ˜ X, y) for a new observation with x˜ = 4.
 
 ```{r}
-beta = theta[, 1:2]
-sigma = theta[,3]
-mu = beta%*%c(1, 4)
+beta <- theta[, 1:2]
+sigma <- theta[, 3]
+mu <- beta %*% c(1, 4)
 
 # dlaplace(beta%*%X,)
-draws = rlaplace(10000, mu, sigma)
+draws <- rlaplace(10000, mu, sigma)
 hist(draws, 180)
 ```
